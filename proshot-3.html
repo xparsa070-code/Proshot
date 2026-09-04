@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ProShot — Zoom & Pro Camera</title>
+<style>
+  :root{
+    --bg:#000000;
+    --panel:#1c1c1ecc;
+    --edge:#ffffff1f;
+    --text:#f5f5f5;
+    --dim:#9a9a9d;
+    --accent:#ffffff;
+    --accent2:#c9c9cc;
+    --danger:#ff3b30;
+    --ok:#2bd576;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+    overflow:hidden; overscroll-behavior:none;
+  }
+  #stage{
+    position:fixed; inset:0; background:#000;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #canvas{
+    max-width:100%; max-height:100%; width:100%; height:100%;
+    object-fit:cover; background:#000;
+  }
+  video{display:none;}
+
+  .glow-text{
+    color:var(--text);
+  }
+
+  #topbar{
+    position:fixed; top:0; left:0; right:0; z-index:20;
+    padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;
+    display:flex; align-items:center; justify-content:space-between;
+    background:linear-gradient(to bottom, #000000aa, transparent);
+    pointer-events:none;
+  }
+  #topbar > *{pointer-events:auto;}
+  #statusPill{
+    font-size:12px; padding:6px 10px; border-radius:20px;
+    background:var(--panel); border:1px solid var(--edge);
+    display:flex; gap:8px; align-items:center; color:var(--dim);
+    backdrop-filter:blur(10px);
+  }
+  #statusPill b{color:var(--text); font-weight:600;}
+  .iconBtn{
+    width:38px; height:38px; border-radius:50%;
+    background:var(--panel); border:1px solid var(--edge);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--text); font-size:17px; backdrop-filter:blur(10px);
+  }
+
+  #zoomRail{
+    position:fixed; right:10px; top:50%; transform:translateY(-50%);
+    z-index:20; display:flex; flex-direction:column; align-items:center;
+    gap:10px; padding:12px 8px; border-radius:24px;
+    background:var(--panel); border:1px solid var(--edge); backdrop-filter:blur(10px);
+  }
+  #zoomVal{
+    font-weight:700; font-size:14px; min-width:52px; text-align:center;
+    padding:4px 0;
+  }
+  #zoomSlider{
+    -webkit-appearance:none; appearance:none;
+    width:180px; height:34px; transform:rotate(-90deg);
+    background:transparent; margin:70px -73px;
+  }
+  #zoomSlider::-webkit-slider-runnable-track{
+    height:4px; border-radius:4px;
+    background:#ffffff40;
+  }
+  #zoomSlider::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none;
+    width:22px; height:22px; border-radius:50%;
+    background:#fff; border:3px solid #000;
+    margin-top:-9px; box-shadow:0 0 8px #ffffff88;
+  }
+  .zoomPresets{display:flex; flex-direction:column; gap:6px;}
+  .zPreset{
+    font-size:11px; padding:4px 7px; border-radius:10px;
+    background:#ffffff10; color:var(--dim); border:1px solid transparent;
+  }
+  .zPreset.active{
+    background:#ffffff; color:#000; border-color:#fff3;
+  }
+
+  #bottomBar{
+    position:fixed; left:0; right:0; bottom:0; z-index:20;
+    padding:14px 20px calc(env(safe-area-inset-bottom,0px) + 18px);
+    display:flex; align-items:center; justify-content:space-between;
+    background:linear-gradient(to top,#000000cc,transparent);
+  }
+  #modeSwitch{
+    display:flex; gap:4px; background:var(--panel); border:1px solid var(--edge);
+    border-radius:20px; padding:4px; backdrop-filter:blur(10px);
+  }
+  .modeBtn{
+    padding:6px 14px; font-size:13px; border-radius:16px; color:var(--dim); font-weight:600;
+  }
+  .modeBtn.active{
+    background:#ffffff; color:#000;
+  }
+  #shutter{
+    width:74px; height:74px; border-radius:50%;
+    background:#fff; border:4px solid #ffffff55;
+    position:relative;
+  }
+  #shutter::after{
+    content:''; position:absolute; inset:6px; border-radius:50%;
+    background:#fff; border:2px solid #000;
+  }
+  #shutter.recording::after{ background:var(--danger); border:none; border-radius:14px; inset:20px; }
+  #shutter.recording{ border-color:var(--danger); }
+  #galleryDot{
+    width:44px; height:44px; border-radius:12px; overflow:hidden;
+    border:1px solid var(--edge); background:#111;
+    display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--dim);
+  }
+  #galleryDot img{width:100%; height:100%; object-fit:cover;}
+  .side44{width:44px;}
+
+  #stackToggleWrap{
+    position:fixed; left:10px; top:50%; transform:translateY(-50%); z-index:20;
+  }
+  #stackToggle{
+    writing-mode:vertical-rl; padding:12px 8px; border-radius:20px;
+    background:var(--panel); border:1px solid var(--edge); font-size:11px;
+    color:var(--dim); backdrop-filter:blur(10px); letter-spacing:0.5px;
+  }
+  #stackToggle.on{ color:#fff; border-color:#fff; }
+  #stackToggle b.dotind{ writing-mode:horizontal-tb; display:block; width:8px; height:8px; border-radius:50%; background:var(--dim); margin:0 auto 6px; }
+  #stackToggle.on b.dotind{ background:#fff; box-shadow:0 0 8px #fff; }
+
+  #panel{
+    position:fixed; left:0; right:0; bottom:0; z-index:30;
+    background:#0b0b10f0; border-top:1px solid var(--edge);
+    border-radius:20px 20px 0 0; padding:16px 18px calc(env(safe-area-inset-bottom,0px) + 16px);
+    transform:translateY(100%); transition:transform .3s cubic-bezier(.32,.72,0,1);
+    max-height:70vh; overflow-y:auto; backdrop-filter:blur(16px);
+  }
+  #panel.open{ transform:translateY(0); }
+  #panel h3{margin:0 0 12px; font-size:15px;}
+  .row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--edge); gap:14px;}
+  .row:last-child{border-bottom:none;}
+  .row label{font-size:13px; color:var(--dim); flex-shrink:0;}
+  .row .ctl{flex:1; display:flex; justify-content:flex-end;}
+  select, input[type=range].mini{ accent-color:#fff; }
+  select{
+    background:#ffffff10; color:var(--text); border:1px solid var(--edge);
+    border-radius:10px; padding:6px 10px; font-size:13px;
+  }
+  input[type=range].mini{ width:130px; }
+  .segBtns{display:flex; gap:6px;}
+  .segBtn{ padding:5px 10px; font-size:12px; border-radius:10px; background:#ffffff10; color:var(--dim); }
+  .segBtn.active{ background:#ffffff; color:#000; }
+  .unavail{opacity:0.35; pointer-events:none;}
+  #closePanel{ position:absolute; top:14px; left:16px; color:var(--dim); font-size:20px; }
+
+  #toast{
+    position:fixed; top:calc(env(safe-area-inset-top,0px) + 60px); left:50%; transform:translateX(-50%);
+    background:#111116e6; border:1px solid var(--edge); padding:9px 16px; border-radius:14px;
+    font-size:13px; z-index:50; opacity:0; transition:opacity .25s, transform .25s;
+    pointer-events:none;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(4px);}
+
+
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="video" playsinline autoplay muted></video>
+  <canvas id="canvas"></canvas>
+</div>
+
+<div id="topbar">
+  <div id="statusPill">📷 <b id="resTag">--</b></div>
+  <div class="iconBtn" id="settingsBtn">⚙️</div>
+</div>
+
+<div id="stackToggleWrap">
+  <button id="stackToggle"><b class="dotind"></b>STACK</button>
+</div>
+
+<div id="zoomRail">
+  <div id="zoomVal">1.0x</div>
+  <input type="range" id="zoomSlider" min="1" max="150" step="0.1" value="1">
+  <div class="zoomPresets">
+    <button class="zPreset" data-z="1">1x</button>
+    <button class="zPreset" data-z="5">5x</button>
+    <button class="zPreset" data-z="20">20x</button>
+    <button class="zPreset" data-z="50">50x</button>
+    <button class="zPreset" data-z="150">150x</button>
+  </div>
+</div>
+
+<div id="bottomBar">
+  <div class="side44" id="galleryDot">🖼</div>
+  <div id="modeSwitch">
+    <button class="modeBtn active" data-mode="photo">عکس</button>
+    <button class="modeBtn" data-mode="video">ویدیو</button>
+  </div>
+  <button id="shutter"></button>
+</div>
+
+<div id="panel">
+  <div id="closePanel">✕</div>
+  <h3>تنظیمات حرفه‌ای</h3>
+
+  <div class="row" id="rowFocus">
+    <label>فوکوس</label>
+    <div class="ctl segBtns" id="focusBtns">
+      <button class="segBtn" data-v="continuous">اتوماتیک</button>
+      <button class="segBtn" data-v="manual">دستی</button>
+    </div>
+  </div>
+  <div class="row" id="rowFocusDist">
+    <label>فاصله فوکوس</label>
+    <div class="ctl"><input type="range" class="mini" id="focusDistance" min="0" max="1" step="0.01"></div>
+  </div>
+
+  <div class="row" id="rowExpMode">
+    <label>اکسپوژر</label>
+    <div class="ctl segBtns" id="expBtns">
+      <button class="segBtn" data-v="continuous">اتوماتیک</button>
+      <button class="segBtn" data-v="manual">دستی</button>
+    </div>
+  </div>
+  <div class="row" id="rowExpComp">
+    <label>جبران نور (EV)</label>
+    <div class="ctl"><input type="range" class="mini" id="expComp" min="-2" max="2" step="0.1"></div>
+  </div>
+  <div class="row" id="rowIso">
+    <label>ISO</label>
+    <div class="ctl"><input type="range" class="mini" id="isoRange" min="0" max="1" step="0.01"></div>
+  </div>
+
+  <div class="row" id="rowWB">
+    <label>وایت بالانس</label>
+    <div class="ctl segBtns" id="wbBtns">
+      <button class="segBtn" data-v="continuous">اتوماتیک</button>
+      <button class="segBtn" data-v="manual">دستی</button>
+    </div>
+  </div>
+  <div class="row" id="rowWBTemp">
+    <label>دمای رنگ</label>
+    <div class="ctl"><input type="range" class="mini" id="wbTemp" min="0" max="1" step="0.01"></div>
+  </div>
+
+  <div class="row" id="rowTorch">
+    <label>فلاش (Torch)</label>
+    <div class="ctl segBtns" id="torchBtns">
+      <button class="segBtn" data-v="off">خاموش</button>
+      <button class="segBtn" data-v="on">روشن</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>کیفیت خروجی عکس</label>
+    <div class="ctl">
+      <select id="photoQuality">
+        <option value="0.95">بالا</option>
+        <option value="0.85" selected>متوسط‌بالا</option>
+        <option value="0.7">متوسط</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const video = $('video'), canvas = $('canvas'), ctx = canvas.getContext('2d', {alpha:false});
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+
+  let stream, track, caps = {}, settings = {};
+  let imageCapture = null, photoCaps = null;
+  let zoom = 1, hwZoomMax = 1, hasHwZoom = false;
+  let mode = 'photo', stacking = false;
+  let mediaRecorder = null, recordedChunks = [], isRecording = false;
+  let rafId = null;
+  let lastShotURL = null;
+
+  function toast(msg, ms=1800){
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), ms);
+  }
+
+  // ---------- Camera init ----------
+  async function startCamera(){
+    const wantAudio = mode === 'video';
+
+    // Phase 1: cheap probe stream just to read this camera's real capabilities
+    const probeStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } }, audio: false
+    });
+    const probeTrack = probeStream.getVideoTracks()[0];
+    const probeCaps = probeTrack.getCapabilities ? probeTrack.getCapabilities() : {};
+    probeStream.getTracks().forEach(t => t.stop());
+
+    const maxW = probeCaps.width ? probeCaps.width.max : 1920;
+    const maxH = probeCaps.height ? probeCaps.height.max : 1080;
+    const maxFR = probeCaps.frameRate ? Math.min(60, Math.round(probeCaps.frameRate.max)) : 30;
+
+    // Phase 2: request as close to the real max resolution as possible.
+    // Using 'ideal' (not 'exact') here matters: width.max and height.max are often reported
+    // independently and aren't guaranteed to be a jointly valid combo, so 'exact' on both
+    // can silently fail the whole request. 'ideal' never throws, it just gets us close.
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: wantAudio,
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: maxW },
+        height: { ideal: maxH }
+      }
+    });
+    track = stream.getVideoTracks()[0];
+
+    // Now try to push frame rate up without disturbing the resolution we just negotiated.
+    if (maxFR > 15){
+      try{ await track.applyConstraints({ frameRate: { ideal: maxFR } }); }catch(e){ /* keep whatever frameRate we got */ }
+    }
+
+    video.srcObject = stream;
+    await video.play();
+
+    caps = track.getCapabilities ? track.getCapabilities() : {};
+    settings = track.getSettings ? track.getSettings() : {};
+
+    hasHwZoom = !!(caps.zoom);
+    hwZoomMax = hasHwZoom ? caps.zoom.max : 1;
+
+    // ImageCapture gives access to the camera's real still-photo pipeline (full megapixel count),
+    // completely separate from the lower-res video stream used for smooth preview.
+    imageCapture = null; photoCaps = null;
+    if ('ImageCapture' in window){
+      try{
+        imageCapture = new ImageCapture(track);
+        photoCaps = await imageCapture.getPhotoCapabilities();
+      }catch(e){ imageCapture = null; photoCaps = null; }
+    }
+
+    fitPreviewCanvas();
+    updateResTag();
+    setupProControls();
+    renderLoop();
+  }
+
+  const PREVIEW_MAX = 960; // cap preview render resolution for smooth FPS regardless of sensor res
+  function fitPreviewCanvas(){
+    const vw = video.videoWidth || 1920, vh = video.videoHeight || 1080;
+    const scale = Math.min(1, PREVIEW_MAX / Math.max(vw, vh));
+    canvas.width = Math.round(vw * scale);
+    canvas.height = Math.round(vh * scale);
+  }
+
+  function updateResTag(){
+    const w = video.videoWidth, h = video.videoHeight;
+    const fr = settings.frameRate ? Math.round(settings.frameRate) : (track.getSettings().frameRate||'--');
+    let txt = `${w}×${h}@${fr}fps`;
+    if (photoCaps && photoCaps.imageWidth && photoCaps.imageHeight){
+      const pw = Math.round(photoCaps.imageWidth.max), ph = Math.round(photoCaps.imageHeight.max);
+      const mp = ((pw*ph)/1_000_000).toFixed(0);
+      txt += ` · عکس ${pw}×${ph} (${mp}MP)`;
+    }
+    $('resTag').textContent = txt;
+  }
+
+  // ---------- Zoom (hardware + digital) ----------
+  async function applyZoom(z){
+    zoom = Math.min(150, Math.max(1, z));
+    $('zoomVal').textContent = zoom.toFixed(1)+'x';
+    $('zoomSlider').value = zoom;
+    document.querySelectorAll('.zPreset').forEach(b=>{
+      b.classList.toggle('active', Math.abs(parseFloat(b.dataset.z)-zoom) < 0.05);
+    });
+
+    if (hasHwZoom){
+      const hwTarget = Math.min(zoom, hwZoomMax);
+      try{ await track.applyConstraints({ advanced:[{ zoom: hwTarget }] }); }catch(e){}
+    }
+  }
+
+  function currentHwZoom(){
+    if (!hasHwZoom) return 1;
+    const s = track.getSettings ? track.getSettings() : {};
+    return s.zoom || 1;
+  }
+
+  function cropRectFor(vw, vh){
+    const hw = currentHwZoom();
+    const digitalFactor = Math.max(1, zoom / hw);
+    const cropW = vw / digitalFactor;
+    const cropH = vh / digitalFactor;
+    const sx = (vw - cropW)/2, sy = (vh - cropH)/2;
+    return {sx, sy, cropW, cropH};
+  }
+
+  // ---------- Render loop: draw cropped+scaled frame to canvas ----------
+  function renderLoop(){
+    if (video.readyState >= 2){
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const {sx, sy, cropW, cropH} = cropRectFor(vw, vh);
+      ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, canvas.width, canvas.height);
+    }
+    rafId = requestAnimationFrame(renderLoop);
+  }
+
+  function dimsOf(src){
+    if (src instanceof HTMLVideoElement) return [src.videoWidth, src.videoHeight];
+    return [src.width, src.height];
+  }
+
+  // Grabs one frame from the camera's real still-photo pipeline (full sensor megapixels)
+  // when available, falling back to the current video frame otherwise.
+  async function grabHighResSource(){
+    if (imageCapture){
+      try{
+        const opts = {};
+        if (photoCaps && photoCaps.imageWidth && photoCaps.imageHeight){
+          opts.imageWidth = photoCaps.imageWidth.max;
+          opts.imageHeight = photoCaps.imageHeight.max;
+        }
+        const blob = await imageCapture.takePhoto(opts);
+        return await createImageBitmap(blob);
+      }catch(e){ /* fall through to video frame */ }
+    }
+    return video;
+  }
+
+  function drawFullResFrame(targetCanvas, source){
+    const [sw, sh] = dimsOf(source);
+    const {sx, sy, cropW, cropH} = cropRectFor(sw, sh);
+    targetCanvas.width = sw; targetCanvas.height = sh;
+    const tctx = targetCanvas.getContext('2d');
+    tctx.imageSmoothingEnabled = true; tctx.imageSmoothingQuality = 'high';
+    tctx.drawImage(source, sx, sy, cropW, cropH, 0, 0, sw, sh);
+    return tctx;
+  }
+
+  async function captureStacked(frames=6){
+    const full = document.createElement('canvas');
+    const first = await grabHighResSource();
+    const tctx = drawFullResFrame(full, first);
+    const w = full.width, h = full.height;
+    const acc = new Float32Array(w*h*4);
+    let d = tctx.getImageData(0,0,w,h).data;
+    for (let p=0;p<d.length;p++) acc[p]+=d[p];
+    for (let i=1;i<frames;i++){
+      const src = await grabHighResSource();
+      drawFullResFrame(full, src);
+      d = tctx.getImageData(0,0,w,h).data;
+      for (let p=0;p<d.length;p++) acc[p]+=d[p];
+    }
+    const out = tctx.createImageData(w,h);
+    for (let p=0;p<acc.length;p++) out.data[p] = acc[p]/frames;
+    tctx.putImageData(out,0,0);
+    return full;
+  }
+
+  // ---------- Shutter ----------
+  async function takePhoto(){
+    let source;
+    if (stacking && zoom > 8){
+      toast('در حال ترکیب فریم‌ها برای کیفیت بهتر...', 1200);
+      source = await captureStacked(6);
+    } else {
+      const hires = await grabHighResSource();
+      source = document.createElement('canvas');
+      drawFullResFrame(source, hires);
+    }
+    const q = parseFloat($('photoQuality').value);
+    source.toBlob(blob=>{
+      const url = URL.createObjectURL(blob);
+      lastShotURL = url;
+      $('galleryDot').innerHTML = `<img src="${url}">`;
+      const a = document.createElement('a');
+      a.href = url; a.download = `proshot_${Date.now()}.jpg`;
+      document.body.appendChild(a); a.click(); a.remove();
+      toast(`عکس ذخیره شد (${zoom.toFixed(1)}x)`);
+    }, 'image/jpeg', q);
+  }
+
+  function pickMimeType(){
+    const candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8,opus',
+      'video/webm'
+    ];
+    for (const c of candidates){ if (MediaRecorder.isTypeSupported(c)) return c; }
+    return '';
+  }
+
+  let recordCanvas = null, recordCtx = null, recordRafId = null;
+
+  function recordLoop(){
+    if (video.readyState >= 2 && recordCanvas){
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const {sx, sy, cropW, cropH} = cropRectFor(vw, vh);
+      if (recordCanvas.width !== vw) recordCanvas.width = vw;
+      if (recordCanvas.height !== vh) recordCanvas.height = vh;
+      recordCtx.drawImage(video, sx, sy, cropW, cropH, 0, 0, vw, vh);
+    }
+    recordRafId = requestAnimationFrame(recordLoop);
+  }
+
+  function startRecording(){
+    const fps = (settings.frameRate ? Math.min(60, Math.round(settings.frameRate)) : 30);
+
+    recordCanvas = document.createElement('canvas');
+    recordCanvas.width = video.videoWidth; recordCanvas.height = video.videoHeight;
+    recordCtx = recordCanvas.getContext('2d', {alpha:false});
+    recordCtx.imageSmoothingEnabled = true; recordCtx.imageSmoothingQuality = 'high';
+    recordLoop();
+
+    const canvasStream = recordCanvas.captureStream(fps);
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length) audioTracks.forEach(t=>canvasStream.addTrack(t));
+
+    const mime = pickMimeType();
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(canvasStream, mime ? {mimeType:mime, videoBitsPerSecond:16_000_000} : undefined);
+    mediaRecorder.ondataavailable = e=>{ if (e.data.size>0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = ()=>{
+      cancelAnimationFrame(recordRafId); recordRafId = null; recordCanvas = null;
+      const blob = new Blob(recordedChunks, {type: mime || 'video/webm'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `proshot_${Date.now()}.webm`;
+      document.body.appendChild(a); a.click(); a.remove();
+      toast('ویدیو ذخیره شد');
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    $('shutter').classList.add('recording');
+  }
+
+  function stopRecording(){
+    if (mediaRecorder && isRecording){
+      mediaRecorder.stop();
+      isRecording = false;
+      $('shutter').classList.remove('recording');
+    }
+  }
+
+  // ---------- Pro controls ----------
+  function setRowAvail(rowId, avail){ $(rowId).classList.toggle('unavail', !avail); }
+
+  function setupProControls(){
+    // Focus
+    const hasFocusMode = caps.focusMode && caps.focusMode.length;
+    setRowAvail('rowFocus', hasFocusMode);
+    setRowAvail('rowFocusDist', !!caps.focusDistance);
+    if (caps.focusDistance){
+      $('focusDistance').min = caps.focusDistance.min;
+      $('focusDistance').max = caps.focusDistance.max;
+      $('focusDistance').step = caps.focusDistance.step || 0.01;
+      $('focusDistance').value = settings.focusDistance || caps.focusDistance.min;
+    }
+
+    // Exposure
+    const hasExpMode = caps.exposureMode && caps.exposureMode.length;
+    setRowAvail('rowExpMode', hasExpMode);
+    setRowAvail('rowExpComp', !!caps.exposureCompensation);
+    if (caps.exposureCompensation){
+      $('expComp').min = caps.exposureCompensation.min;
+      $('expComp').max = caps.exposureCompensation.max;
+      $('expComp').step = caps.exposureCompensation.step || 0.1;
+      $('expComp').value = settings.exposureCompensation || 0;
+    }
+    setRowAvail('rowIso', !!caps.iso);
+    if (caps.iso){
+      $('isoRange').min = caps.iso.min; $('isoRange').max = caps.iso.max;
+      $('isoRange').step = caps.iso.step || 1;
+      $('isoRange').value = settings.iso || caps.iso.min;
+    }
+
+    // White balance
+    const hasWB = caps.whiteBalanceMode && caps.whiteBalanceMode.length;
+    setRowAvail('rowWB', hasWB);
+    setRowAvail('rowWBTemp', !!caps.colorTemperature);
+    if (caps.colorTemperature){
+      $('wbTemp').min = caps.colorTemperature.min; $('wbTemp').max = caps.colorTemperature.max;
+      $('wbTemp').step = caps.colorTemperature.step || 1;
+      $('wbTemp').value = settings.colorTemperature || caps.colorTemperature.min;
+    }
+
+    setRowAvail('rowTorch', !!caps.torch);
+  }
+
+  async function applyAdvanced(obj){
+    try{ await track.applyConstraints({advanced:[obj]}); }catch(e){ toast('این قابلیت روی این گوشی پشتیبانی نمی‌شه'); }
+  }
+
+  // ---------- UI wiring ----------
+  (async ()=>{
+    try{
+      await startCamera();
+    }catch(e){
+      toast('دسترسی به دوربین رد شد یا در دسترس نیست');
+    }
+  })();
+
+  $('zoomSlider').oninput = e => applyZoom(parseFloat(e.target.value));
+  document.querySelectorAll('.zPreset').forEach(b=>{
+    b.onclick = ()=> applyZoom(parseFloat(b.dataset.z));
+  });
+
+  $('stackToggle').onclick = ()=>{
+    stacking = !stacking;
+    $('stackToggle').classList.toggle('on', stacking);
+    toast(stacking ? 'حالت Stack روشن شد (برای زوم بالای 8x)' : 'حالت Stack خاموش شد');
+  };
+
+  $('settingsBtn').onclick = ()=> $('panel').classList.add('open');
+  $('closePanel').onclick = ()=> $('panel').classList.remove('open');
+
+  document.querySelectorAll('.modeBtn').forEach(b=>{
+    b.onclick = async ()=>{
+      document.querySelectorAll('.modeBtn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      mode = b.dataset.mode;
+      // restart stream to (de)activate audio for video mode
+      if (stream) stream.getTracks().forEach(t=>t.stop());
+      cancelAnimationFrame(rafId);
+      await startCamera();
+    };
+  });
+
+  $('shutter').onclick = ()=>{
+    if (mode === 'photo'){
+      takePhoto();
+    } else {
+      if (!isRecording) startRecording(); else stopRecording();
+    }
+  };
+
+  $('focusBtns').querySelectorAll('.segBtn').forEach(b=>{
+    b.onclick = ()=>{
+      $('focusBtns').querySelectorAll('.segBtn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      applyAdvanced({focusMode:b.dataset.v});
+    };
+  });
+  $('focusDistance').onchange = e=> applyAdvanced({focusDistance:parseFloat(e.target.value)});
+
+  $('expBtns').querySelectorAll('.segBtn').forEach(b=>{
+    b.onclick = ()=>{
+      $('expBtns').querySelectorAll('.segBtn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      applyAdvanced({exposureMode:b.dataset.v});
+    };
+  });
+  $('expComp').onchange = e=> applyAdvanced({exposureCompensation:parseFloat(e.target.value)});
+  $('isoRange').onchange = e=> applyAdvanced({iso:parseFloat(e.target.value)});
+
+  $('wbBtns').querySelectorAll('.segBtn').forEach(b=>{
+    b.onclick = ()=>{
+      $('wbBtns').querySelectorAll('.segBtn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      applyAdvanced({whiteBalanceMode:b.dataset.v});
+    };
+  });
+  $('wbTemp').onchange = e=> applyAdvanced({colorTemperature:parseFloat(e.target.value)});
+
+  $('torchBtns').querySelectorAll('.segBtn').forEach(b=>{
+    b.onclick = ()=>{
+      $('torchBtns').querySelectorAll('.segBtn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      applyAdvanced({torch: b.dataset.v === 'on'});
+    };
+  });
+
+  window.addEventListener('resize', ()=>{});
+})();
+</script>
+</body>
+</html>
